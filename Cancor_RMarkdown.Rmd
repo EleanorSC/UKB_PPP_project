@@ -1,0 +1,316 @@
+---
+title: "Canonical Correlation Analysis (CCA) to examine covariance between proteomic data and white matter tract data in UKB"
+author: "Eleanor Conole"
+date: "`r format(Sys.time(), '%d %B %Y')`"
+output:
+  prettydoc::html_pretty:
+    toc: true
+    theme: hpstr
+    highlight: github
+---
+
+<style>
+.output-table {
+  max-width: 800px; /* Set the maximum width as needed */
+  margin: auto; /* Center the table */
+}
+</style>
+
+## A quick note on CCA
+
+### Installation of relevant packages
+
+```{r,warning=FALSE, message=FALSE, echo = FALSE}
+#install.packages("tidyverse")
+#install.packages("dplyr")
+#install.packages("magrittr")
+#install.packages("cancor")
+
+#if (!requireNamespace("cancor", quietly = TRUE)) {
+#  install.packages("cancor")
+#}
+
+# Set the CRAN mirror explicitly
+#options(repos = c(CRAN = "https://cloud.r-project.org"))
+
+
+# Install the cancor package
+#install.packages("cancor")
+
+
+```
+
+```{r,warning=FALSE, message=FALSE, echo = FALSE}
+library(tidyverse)
+#library(dplyr)
+#library(magrittr)
+library(candisc)
+```
+
+## Section 1: Loading some subsample data 
+
+### Load the merged UKB subsample and protein assay information
+```{r, warning=FALSE, message=FALSE}
+
+merged_data <- read.csv("merged_data.csv")
+protein_assay_info <- read.csv("ST3_UKB_proteins.csv") 
+
+```
+
+
+```{r, echo = FALSE}
+
+#ls(merged_data)
+
+```
+
+
+```{r,echo = FALSE}
+
+#ls(protein_assay_info)
+
+```
+
+```{r,echo = FALSE}
+#protein_assay_info$Assay.Target
+```
+
+```{r,echo = FALSE}
+
+#glimpse(merged_data$`HLA-DRA`)
+
+```
+
+### Data cleaning
+
+`cancor` won't accept dashes. We have some columns in here referring to proteins in our proteomics data that cause an issue when running cancor, so let's change any dashes to underscores to get around this; equally when we import merged_data from a .csv file all - return to .. E.g. `HLA-DRA` -> `HLA_DRA` and in `merged_data` ensure that `HLA.DRA` -> `HLA_DRA`. 
+
+```{r}
+
+colnames(merged_data) <- sub("HLA.DRA", "HLA_DRA", colnames(merged_data))
+colnames(merged_data) <- sub("HLA.E", "HLA_E", colnames(merged_data))
+
+
+```
+
+
+```{r, warning=FALSE, message=FALSE, echo = FALSE}
+# Issues with HLA-DRA & HLA-E for cancor, let's try adding an underscore instead
+# colnames(subset_cca_test) <- gsub("-", "_", colnames(subset_cca_test))
+```
+
+
+```{r}
+protein_assay_info$Assay.Target <- gsub("-", "_", protein_assay_info$Assay.Target)
+```
+
+### Assay information
+
+```{r, warning=FALSE, message=FALSE}
+## ------------NOTES----------------- ##
+
+#Identify which proteins are inflammmatory
+protein_assay_inflammation <- protein_assay_info %>%
+  filter(Protein.panel == "Inflammation") %>%
+  select(Assay.Target, Protein.panel)
+
+```
+
+### Creating a subset of FA tract data
+
+Create a df that simply has the relevant DTI metrics of interest as columns, e.g., `FMaj_FA`, `FMin_FA` etc.
+
+```{r, warning=FALSE, message=FALSE}
+
+# Create a dataframe with specified column names under the column title "FA"
+df <- data.frame(
+  FA = c("FMaj_FA", "FMin_FA", "lAR_FA", "lATR_FA", "lCingG_FA", "lCingPH_FA",
+         "lCST_FA", "lIFOF_FA", "lILF_FA", "lML_FA", "lPTR_FA", "lSLF_FA",
+         "lSTR_FA", "lUnc_FA", "MCP_FA", "rAR_FA", "rATR_FA", "rCingG_FA",
+         "rCingPH_FA", "rCST_FA", "rIFOF_FA", "rILF_FA", "rML_FA", "rPTR_FA",
+         "rSLF_FA", "rSTR_FA", "rUnc_FA")
+  )
+
+```
+
+### Examining the dataframe
+We want a subset of proteomic data and WM FA data to examine canon associations:
+
+```{r, warning=FALSE, message=FALSE}
+subset_cca_test <- merged_data %>%
+  select(one_of(protein_assay_inflammation$Assay.Target), one_of(df$FA))
+```
+
+Here we have a subset now `subset_cca_test` that contains both the proteomic and FA tract data of interest. Let's check the structure of this by looking at the first 12 columns:
+
+```{r, warning=FALSE, message=FALSE, results='asis', echo = F}
+
+# Subset the first 25 columns
+subset_25_cols <- subset_cca_test[, 1:12]
+
+skim_result <- skimr::skim(subset_25_cols)
+
+cat('<div class="output-table">')
+print(skim_result)
+cat('</div>')
+
+```
+
+
+```{r, warning=FALSE, message=FALSE, echo = FALSE}
+
+#ls(subset_cca_test)
+
+```
+
+
+```{r, warning=FALSE, message=FALSE,, echo = FALSE}
+#glimpse(subset_cca_test_proteomics) 
+
+#subset_cca_test$HLA_DRA
+
+```
+
+### Create and scale out matrices X and Y for inputs for the CCA model
+
+```{r, warning=FALSE, message=FALSE}
+subset_cca_test_proteomics <- subset_cca_test %>%
+  select(one_of(protein_assay_inflammation$Assay.Target))%>%
+  scale()
+
+subset_cca_test_FA <- subset_cca_test %>%
+  select(one_of(df$FA)) %>%
+  scale()
+
+```
+
+```{r, warning=FALSE, message=FALSE}
+#skimr::skim(subset_cca_test_proteomics)
+#skimr::skim(subset_cca_test_FA)
+
+```
+
+
+
+### CCA
+
+Run the `cancor` function from the `candisc` package
+
+```{r}
+
+cca_model <- cancor(
+  subset_cca_test_proteomics,
+  subset_cca_test_FA
+  )
+
+```
+
+```{r}
+#cca_model[["coef"]][["X"]]
+```
+
+### CCA output
+
+The top part of the output, `$cancor`, is a list containing 
+the canonical correlation coefficients between the sets of variables. 
+In this case, there are 27 coefficients (due to 27 tracts). These coefficients measure the strength of the relationship between the sets of variables, with higher values indicating a stronger relationship.
+
+In a canonical correlation analysis, there are usually multiple canonical correlation
+coefficients, not just one. The number of coefficients is equal to the minimum of 
+the number of variables in each set. So in our example, there are 27 variables in
+the FA white matter tract set and 300 + variables in the proteomics set. 
+Therefore, the `cancor()` function returns **27 canonical correlation coefficients**.
+
+```{r}
+canonical_correlation_coefs <- cca_model$cancor
+canonical_correlation_coefs
+```
+
+
+In our case, these canonical correlation coefficients (CCC) are < 0.35. This means that the first linear combination from each set of variables are weakly correlated. In other words, the proteomics variables are somewhat related to the FA tract variables, and we can use the proteomics to predict WM tract FA.
+
+In more technical terms, the v function is returning the correlation between canonical variates; the canonical variates themselves are the linear combination of the two sets of variables that are maximally correlated with each other.
+
+Because in canonical correlation analysis the goal is to find the linear combinations of two sets of variables that are maximally correlated, the canonical correlation coefficient will generally be higher than the correlation coefficient between any two individual variables in either set. 
+
+The reason for this is that canonical correlation analysis is designed to identify the **underlying** relationships between two sets of variables that are *not apparent from the individual variables alone*. By identifying the combinations of variables that are most strongly related, canonical correlation analysis can provide insights into the underlying factors (shared variance) or dimensions that are driving the observed patterns of correlation.
+
+## CCA canonical coefficients
+### CCA scores = canonical coefficients
+```{r}
+canonical_correlation_scores <- cca_model$scores
+xcoef <- canonical_correlation_scores$X
+ycoef <- canonical_correlation_scores$Y
+```
+
+## CCA Loadings 
+### CCA structure = loadings
+```{r}
+canonical_correlation_structure <- cca_model$structure
+
+xscores <- canonical_correlation_structure$X.xscores
+yscores <- canonical_correlation_structure$Y.yscores
+
+```
+
+```{r}
+yscores[3:6]
+
+cca_model_names <- cca_model$names
+
+barplot(xscores[, 1], names.arg = colnames(cca_model_names$X),
+        main = "CCA Loadings for Proteins", xlab = "Proteins", ylab = "Loadings")
+```
+
+### Loadings interpretation
+
+I think this `xscores[, 1]` is the loadings for the the first white matter tract FA value out of the 27 tracts inputted.
+
+```{r, results='hide'}
+xscores[, 1]
+```
+
+
+```{r}
+yscores[, 1]
+```
+
+
+```{r, results='hide'}
+xscores[, 27]
+```
+
+## Plot the loadings
+```{r}
+## Extract the loadings and variable names
+#loadings <- xscores[, 1]
+#variables <- colnames(cca_model_names$X)
+#
+## Create a data frame for ggplot
+#loadings_df <- data.frame(variables, loadings)
+#
+## Create a bar plot using ggplot2
+#ggplot(loadings_df, aes(x = variables, y = loadings)) +
+#  geom_bar(stat = "identity", fill = "skyblue", color = "black") +
+#  labs(title = "CCA Loadings for Proteins",
+#       x = "Proteins",
+#       y = "Loadings") +
+#  theme_minimal() +
+#  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+
+### Plot initial CCA output
+```{r, warning=FALSE, message=FALSE}
+heplot(cca_model, hypotheses=list("All Proteins"=colnames(subset_cca_test_proteomics)),
+       fill=c(TRUE,FALSE), fill.alpha=0.2,
+       var.cex=1.5, var.col="red", var.lwd=3,
+       prefix="FA canonical dimension"
+)
+```
+
+
+```{r, warning=FALSE, message=FALSE}
+### Plot initial CCA output
+#biplot(cca_model)
+```
