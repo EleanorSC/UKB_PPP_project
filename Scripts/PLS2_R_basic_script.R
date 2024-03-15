@@ -1,6 +1,6 @@
 ## ---------------------------
 ##
-## Script Purpose: Initial testing of PLS for analysis
+## Script Purpose: Initial testing of PLS for analysis for OSF report
 ##
 ## -----------------------------
 ##  This R script defines functions for performing Partial Least Squares Regression (PLS2), 
