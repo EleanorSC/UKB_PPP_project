@@ -126,45 +126,134 @@ rownames(proteins) <- proteins$eid
 proteins <- proteins[, !(names(proteins) %in% "eid")]
 
 
-### Ensure your data are matrices for plsr to work
-wm_matrix <- as.matrix(wm)
-proteins_matrix <- as.matrix(proteins)
-
-# Ensure the combined data frame is correctly formed for the 'data' argument if needed. 
-# This might not be necessary if you directly pass matrices to plsr.
-combined_data <- data.frame(cbind(wm_matrix, proteins_matrix))
-
-# Start measuring time
-start_time <- Sys.time()
-
-# Fit the PLSR model
-pls_m1 <- plsr(wm_matrix ~ proteins_matrix, 
-               ncomp = 2, 
-               method = "kernelpls", 
-               scale = TRUE, 
-               validation = "LOO")
-
-# Stop measuring time
-end_time <- Sys.time()
-
-# Calculate the elapsed time
-elapsed_time <- end_time - start_time
-
-# Save the execution time to a log file
-log_file <- "execution_log.txt"
-cat("PLS  execution time:", elapsed_time, "seconds", file = log_file)
-
-# Print a message to the console
-cat("PLS completed in", elapsed_time, "seconds. Log saved to", log_file, "\n")
-
 
 ## -----------------------------
 ##
 ## PART 1b: RUN INITIAL TEST PLS model
 ## -----------------------------
 
-str(proteins)
-pls_m1 <- plsr(wm ~ proteins, ncomp = 10, data = data.frame(X, Y), validation = "LOO")
+#str(proteins)
+#pls_m1 <- plsr(wm ~ proteins, ncomp = 10, data = data.frame(X, Y), validation = "LOO")
+
+X <- as.matrix(proteins)
+Y <- as.matrix(wm)
+
+# Fit the PLS model
+pls_model <- plsr(Y ~ X, ncomp = 2, scale = TRUE)
+
+# Summary of the model
+summary(pls_model)
+
+# Data: 	X dimension: 4644 1463 
+# Y dimension: 4644 27
+# Fit method: kernelpls
+# Number of components considered: 2
+# TRAINING: % variance explained
+# 1 comps  2 comps
+# X            0.3130    1.162
+# FMaj_FA      5.8041    7.409
+# FMin_FA     13.7581   17.154
+# lAR_FA       5.9194    8.094
+# lATR_FA     13.1910   16.682
+# lCingG_FA    7.3206    9.083
+# lCingPH_FA   2.5109    3.286
+# lCST_FA      5.2031    6.513
+# lIFOF_FA    14.9698   18.502
+# lILF_FA     14.5338   17.920
+# lML_FA       0.6607    1.020
+# lPTR_FA      9.8447   12.256
+# lSLF_FA     14.2753   17.352
+# lSTR_FA      6.8537    8.654
+# lUnc_FA      8.6862   10.849
+# MCP_FA       2.4966    3.720
+# rAR_FA       5.4761    7.903
+# rATR_FA     12.5069   15.289
+# rCingG_FA    7.3711    8.675
+# rCingPH_FA   1.6682    2.326
+# rCST_FA      4.9039    6.382
+# rIFOF_FA    15.1197   18.690
+# rILF_FA     14.9330   18.573
+# rML_FA       0.9066    1.230
+# rPTR_FA     10.8904   13.703
+# rSLF_FA     13.3671   16.523
+# rSTR_FA      6.4716    8.239
+# rUnc_FA      9.0083   11.181
+
+
+# Extract loadings of the model
+# Plot the loadings for the predictors (X)
+# Plotting predictor (X) loadings
+plot(pls_model, comps = 1:2, 
+    plottype = "loadings")
+
+plot(pls_model, comps = 1:2, 
+     plottype = "scores")
+
+##############
+
+# Extract loadings for the first two components
+loadings_x <- coef(pls_model, ncomp = 1:2)
+
+# Convert to a data frame for easier manipulation
+loadings_df <- as.data.frame(loadings_x)
+names(loadings_df) <- c("Component1", "Component2")
+loadings_df$Protein <- rownames(loadings_df)
+
+# Assume you have a threshold or specific criteria for top contributors
+# For demonstration, let's select top contributors based on absolute values in Component 1
+threshold <- quantile(abs(loadings_df$Component1), 0.9) # Top 10% as an example
+top_contributors <- loadings_df[abs(loadings_df$Component1) > threshold,]
+
+
+# Function to retrieve color from lookup
+getColorForProtein <- function(proteinName, lookup) {
+  # Default color if not found
+  defaultColor <- "grey"
+  
+  # Search through lookup
+  for(item in lookup) {
+    if(item$name == proteinName) {
+      return(item$color)
+    }
+  }
+  
+  return(defaultColor)
+}
+
+# Apply the function to assign colors
+loadings_df$Color <- sapply(loadings_df$Protein, getColorForProtein, lookup=lookup)
+
+# Replace 'tab:blue' etc. with qppropriate hex codes:
+loadings_df$Color[loadings_df$Color == "tab:blue"] <- "#0000FF"
+loadings_df$Color[loadings_df$Color == "tab:orange"] <- "#FFCC99"
+loadings_df$Color[loadings_df$Color == "tab:green"] <- "#40E0D0"
+loadings_df$Color[loadings_df$Color == "tab:red"] <-  "#8B0000"
+loadings_df$Color[loadings_df$Color == "tab:grey"] <-  "#F0F0F0"
+#loadings_df$Color
+
+threshold <- quantile(abs(loadings_df$Component1), 0.9) # Adjust threshold as needed
+loadings_df$TopContributor <- abs(loadings_df$Component1) > threshold
+
+
+library(ggplot2)
+
+ggplot(top_loadings_df, aes(x = reorder(Protein, Component1), 
+                            y = Component1, 
+                            fill = Color)) +
+  geom_bar(stat = "identity") +
+  scale_fill_identity() +  # Use actual color values from the Color column
+  geom_text(aes(x = reorder(Protein, Component1), 
+                y = Component1 + 0.02,  # Slightly offset text for visibility
+                label = Protein), 
+            hjust = 0.5, vjust = 0, check_overlap = TRUE, size = 3) +
+  labs(title = "PLS Loadings for Top Contributor Proteins", x = "Protein", y = "Loading") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+  coord_flip() +  # Flip coordinates for horizontal bars
+  ylim(-0.001, 0.001)  # Set y-axis limits, which correspond to original x-axis limits
+
+
+
 
 
 ## -----------------------------
