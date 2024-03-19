@@ -1,6 +1,6 @@
 ## ---------------------------
 ##
-## Script Purpose: Initial testing of PLS for analysis for OSF report
+## Script Purpose: Initial testing of PLS for analysis
 ##
 ## -----------------------------
 ##  This R script defines functions for performing Partial Least Squares Regression (PLS2), 
@@ -11,7 +11,336 @@
 ##
 ##
 ## -----------------------------
+
+
+## -----------------------------
+##  In part 1, this R script uses the package pls and additionally
+##  - loads a subset of data 
+##  - tidies data
+##  - draws initial plots 
+## -----------------------------
+
+setwd("/Users/eleanorc_worklaptop/desktop/UKB_Proteomics/UKB_PPP_Rscripts")
+
+
+## -------LOAD DATASETS---------
+df_p_data <- read.csv("ST3_UKB_proteins.csv") #contains protein panel information
+main_df <-read.csv("merged_data.csv") #contains proteomics + neuroimaging
+
+
+## -------TIDY DATASETS---------
+# Remove unnecessary columns like 'X' column from the data frame
+#df_neuroimaging <- main_df[, !(names(main_df) %in% c("eid"))]
+df_neuroimaging <- main_df[, !(names(df_neuroimaging) %in% c("X"))]
+
+# Display the first few rows of the data frame
+head(df_neuroimaging, n = 10)
+
+## ------- ASSIGNING ---------
+# Define white matter tracts columns
+wm_cols <- c("FMaj_FA", "FMin_FA", "lAR_FA", "lATR_FA", "lCingG_FA", "lCingPH_FA", 
+             "lCST_FA", "lIFOF_FA", "lILF_FA", "lML_FA", "lPTR_FA", "lSLF_FA", 
+             "lSTR_FA", "lUnc_FA", "MCP_FA", "rAR_FA", "rATR_FA", "rCingG_FA", 
+             "rCingPH_FA", "rCST_FA", "rIFOF_FA", "rILF_FA", "rML_FA", "rPTR_FA", 
+             "rSLF_FA", "rSTR_FA", "rUnc_FA")
+
+# Extract white matter tracts data
+wm <- df_neuroimaging[, c("eid", wm_cols)]
+
+# Extract proteins data by selecting columns not in wm_cols, also ignore the column eid
+#proteins <- df_neuroimaging[, !(names(df_neuroimaging) %in% wm_cols)]
+
+# First, create a vector that combines 'eid' with the wm_cols
+cols_to_exclude <- c("X", wm_cols)
+
+# Then, select columns from df_neuroimaging that are not in cols_to_exclude
+proteins <- df_neuroimaging[, !(names(df_neuroimaging) %in% cols_to_exclude)]
+
+# Predefined colors vector in R
+colors <- list(Inflammation = "tab:red", 
+               Neurology = "tab:blue", 
+               Cardiometabolic = "tab:orange", 
+               Oncology = "tab:green")
+
+# Initialize an empty list for the lookup
+lookup <- list()
+
+# Iterate over the column names of the proteins dataframe
+for (index in seq_along(colnames(proteins))) {
+  name <- colnames(proteins)[index]
+  panel <- df_p_data[df_p_data$`Assay.Target` == name, ]$`Protein.panel`
+  
+  # Handle the case where panel might be empty or have multiple entries
+  if (length(panel) == 0) {
+    panel <- "" # Default value if no match is found
+    color <- "tab:grey"
+  } else {
+    panel <- panel[1] # Take the first match if there are multiple
+    color <- colors[[panel]] # Use the panel name to lookup the color
+  }
+  
+  # Add the entry to the lookup list
+  lookup[[index]] <- list(name = name, panel = panel, color = color)
+}
+
+# Optionally, to print or inspect the lookup list
+print(lookup)
+
+# Define the function in R
+dictionary_head <- function(dictionary, num_items = 5) {
+  items_to_display <- head(dictionary, num_items)
+  for (index in seq_along(items_to_display)) {
+    cat(paste0(names(items_to_display)[index], ": ", toString(items_to_display[[index]]), "\n"))
+  }
+}
+
+# Assuming 'lookup' is a list created from previous steps
+# Run the function to display the first num_items from lookup
+dictionary_head(lookup)
+
+# Test our dictionary :
+lookup[2]
+
+# Select 'Assay Target' and 'Protein panel' columns and then filter rows where 'Assay Target' is 'THBS4'
+df2 <- subset(df_p_data, select = c(Assay.Target, Protein.panel))
+matched_items <- df2[df2$`Assay.Target` == 'THBS4', ]
+
+# Display the matched items
+print(matched_items)
+
+# Consider setting eid as index
+# Merge wm and proteins
+
+
+proteins_and_wmtracts <- merge(wm, proteins, by = "eid")
+
+
+# Set 'eid' column as row names for the 'wm' dataset
+rownames(wm) <- wm$eid
+
+# Remove the 'eid' column from the dataset, now that it's set as row names
+wm <- wm[, !(names(wm) %in% "eid")]
+
+# Repeat the process for the 'proteins' dataset
+rownames(proteins) <- proteins$eid
+proteins <- proteins[, !(names(proteins) %in% "eid")]
+
+
+### Ensure your data are matrices for plsr to work
+wm_matrix <- as.matrix(wm)
+proteins_matrix <- as.matrix(proteins)
+
+# Ensure the combined data frame is correctly formed for the 'data' argument if needed. 
+# This might not be necessary if you directly pass matrices to plsr.
+combined_data <- data.frame(cbind(wm_matrix, proteins_matrix))
+
+# Start measuring time
+start_time <- Sys.time()
+
+# Fit the PLSR model
+pls_m1 <- plsr(wm_matrix ~ proteins_matrix, 
+               ncomp = 2, 
+               method = "kernelpls", 
+               scale = TRUE, 
+               validation = "LOO")
+
+# Stop measuring time
+end_time <- Sys.time()
+
+# Calculate the elapsed time
+elapsed_time <- end_time - start_time
+
+# Save the execution time to a log file
+log_file <- "execution_log.txt"
+cat("PLS  execution time:", elapsed_time, "seconds", file = log_file)
+
+# Print a message to the console
+cat("PLS completed in", elapsed_time, "seconds. Log saved to", log_file, "\n")
+
+
+## -----------------------------
+##
+## PART 1b: RUN INITIAL TEST PLS model
+## -----------------------------
+
+str(proteins)
+pls_m1 <- plsr(wm ~ proteins, ncomp = 10, data = data.frame(X, Y), validation = "LOO")
+
+
+## -----------------------------
+##
+## PART 2: TRAN AND TEST SPLIT - CAN'T GET TO WORK YET
+## -----------------------------
+
+# In this section, we will do a PLSR on the  data to illustrate the use of pls. 
+# We first divide the data set into train and test data sets: 
+
+# Assuming 'proteins' and 'wm' are your dataframes
+set.seed(42) # Ensure reproducibility
+
+# Calculate the number of observations for the training set
+# For example, to use 75% of the data for training
+training_size <- floor(0.75 * nrow(proteins))
+
+# Randomly sample indices for the training data
+training_indices <- sample(seq_len(nrow(proteins)), size = training_size)
+
+# Split the predictors into training and testing sets
+X_train <- proteins[training_indices, ]
+X_test <- proteins[-training_indices, ]
+
+# Split the outcomes into training and testing sets
+Y_train <- wm[training_indices, ]
+Y_test <- wm[-training_indices, ]
+
+# Now, X_train, Y_train are your training predictors and outcomes, 
+# and X_test, Y_test are your testing predictors and outcomes
+
+## -----------------------------
+##
+## PART 3: RUNNING PLS MODEL
+## -----------------------------
+
+# Fit the PLS model
+# Assuming Y_train is a dataframe of response variables (white matter tracts)
+# and X_train is a dataframe of predictor variables (proteins)
+
+# If X_train or Y_train are lists or not in the expected format, convert them to data frames or matrices
+X_train_df <- as.data.frame(X_train)
+Y_train_df <- as.data.frame(Y_train)
+
+pls_model_1<- plsr(Y_train_df ~ X_train_df, 
+                   ncomp = 5, 
+                   method = "kernelpls", 
+                   scale = TRUE, 
+                   validation = "CV")
+
+# Convert to matrices if they're not already (this step is crucial for numerical analysis)
+X_train_mat <- as.matrix(X_train_df)
+Y_train_mat <- as.matrix(Y_train_df)
+
+# Fit the PLS model using matrices
+pls_model <- plsr(Y_train_mat ~ X_train_mat, ncomp = 5, method = "kernelpls", scale = TRUE, validation = "CV")
+
+
+
+# View the summary of the model
+summary(pls_model)
+
+# Plotting the variance explained by each component
+plot(pls_model, "variance")
+
+# Plotting the predicted vs observed response for the first component
+# This can be useful to assess model performance visually
+plot(pls_model, "prediction", ncomp = 1)
+
+# To assess model performance using cross-validation
+validationplot(pls_model, val.type = "MSEP")
+
+
+pls_model_1 <- plsr(octane ~ NIR, 
+                    ncomp = 10, 
+                    data = gasTrain, 
+                    validation = "LOO") 
+
+#This fits a model with 10 components, 
+#and includes leave-one-out (LOO) cross-validated predictions [12]. 
+#We can get an overview of the fit and validation results with the summary method:
+
+## -----------------------------
+##
+## PART 1: Simulation
+## -----------------------------
+
+
+
+
+
+
+
+
+
 setwd("/Users/eleanorc_worklaptop/desktop/UKB_Proteomics")
+
+## -----------------------------
+##
+## PART 1: Simulation
+## -----------------------------
+
+#Simulated data example
+
+
+install.packages("pls")
+install.packages("MASS") # For simulating correlated data
+install.packages("ggplot2")
+
+library(pls)
+library(MASS) # For simulating correlated data
+library(ggplot2)
+
+
+## -----------------------------
+##
+## PART 1: Simulation
+## -----------------------------
+
+# Start measuring time
+start_time <- Sys.time()
+
+# Set seed for reproducibility
+set.seed(123)
+
+# Number of participants
+n <- 4644
+
+# Simulate highly collinear predictor variables (proteins)
+Sigma_x <- matrix(0.8, 2000, 2000) + diag(0.2, 2000) # Covariance matrix for predictors
+X <- mvrnorm(n, rep(0, 2000), Sigma_x) # Simulated predictors
+
+# Simulate highly collinear response variables (white matter fractional anisotropy)
+Sigma_y <- matrix(0.8, 27, 27) + diag(0.2, 27) # Covariance matrix for responses
+Y <- mvrnorm(n, rep(0, 27), Sigma_y) # Simulated responses
+
+# Perform PLS2
+pls2_model <- plsr(Y ~ X, ncomp = 10, method = "kernelpls", scale = TRUE, validation = "CV")
+
+# Summary of the model
+summary(pls2_model)
+
+# Plotting
+# Scores plot for the first two components
+scores <- scores(pls2_model)[,1:2] # Extract scores for the first two components
+
+# Convert to a data frame for ggplot
+scores_df <- data.frame(Component1 = scores[,1], Component2 = scores[,2])
+
+ggplot(scores_df, aes(x = Component1, y = Component2)) +
+  geom_point(alpha = 0.5) +
+  ggtitle("Scores Plot for the First Two PLS Components") +
+  xlab("Component 1") +
+  ylab("Component 2")
+
+# Stop measuring time
+end_time <- Sys.time()
+
+# Calculate the elapsed time
+elapsed_time <- end_time - start_time
+
+# Save the execution time to a log file
+log_file <- "execution_log.txt"
+cat("Linear regression execution time:", elapsed_time, "seconds", file = log_file)
+
+# Print a message to the console
+cat("Linear regression completed in", elapsed_time, "seconds. Log saved to", log_file, "\n")
+
+
+## -----------------------------
+##
+## END Of PART 1: Simulation
+## -----------------------------
+
+
+
 
 
 #PLS2 and ptPLS2
