@@ -23,6 +23,15 @@
 setwd("/Users/eleanorc_worklaptop/desktop/UKB_Proteomics/UKB_PPP_Rscripts")
 
 
+## -------PACKAGES---------
+
+install.packages("tidyverse")
+install.packages("magrittr")
+
+library(tidyverse)
+library(magrittr)
+
+
 ## -------LOAD DATASETS---------
 df_p_data <- read.csv("ST3_UKB_proteins.csv") #contains protein panel information
 main_df <-read.csv("merged_data.csv") #contains proteomics + neuroimaging
@@ -254,6 +263,168 @@ ggplot(top_loadings_df, aes(x = reorder(Protein, Component1),
 
 
 
+## -----------------------------
+##
+## PART 2a: TEST OTHER R PACKAGE PLSREG2
+## -----------------------------
+install.packages("plsdepot")
+library(plsdepot)
+
+# N.b missing data to consider
+PLS2_object<- plsreg2(X, Y, comps = 2, crosval = FALSE)
+
+
+
+
+# X.scores
+# The scatter plot shows how well the LVs from the protein data align or correlate with the LVs from the DTI data. 
+# If there are clear patterns or clusters, it indicates a potential relationship between protein expression and DTI metrics.
+
+# Extract scores
+scores_x <- PLS2_object$x.scores
+scores_y <- PLS2_object$y.scores
+
+# Convert to a data frame
+scores_df <- data.frame(Score_X1 = scores_x[,1], Score_Y1 = scores_y[,1], 
+                        Score_X2 = scores_x[,2], Score_Y2 = scores_y[,2])
+
+# Plotting
+ggplot(scores_df, aes(x = Score_X1, y = Score_Y1)) +
+  geom_point(aes(color = "Predictor Scores", alpha = 0.6)) +
+  geom_point(aes(x = Score_X2, 
+                 y = Score_Y2, 
+                 color = "Response Scores", 
+                 alpha = 0.01)) +
+  scale_color_manual(values = c("Predictor Scores" = "blue", 
+                                "Response Scores" = "red")) +
+  theme_minimal() +
+  labs(title = "PLS Model Scores for the First Two Components",
+       x = "First Component", y = "Second Component") +
+  theme(legend.title = element_blank())
+#######
+
+#LOADINGS
+# Assuming you have a way to extract or calculate loadings for plotting
+
+# Extract loadings for the first component (hypothetical example)
+loadings_x1 <- PLS2_object$x.loads[,1]
+
+# Convert to a data frame
+loadings_df <- data.frame(Protein = names(loadings_x1), Loading = loadings_x1)
+
+#Match up loadings_df to information regarding protein panel
+
+# Function to retrieve color from lookup
+getColorForProtein <- function(proteinName, lookup) {
+  # Default color if not found
+  defaultColor <- "grey"
+  
+  # Search through lookup
+  for(item in lookup) {
+    if(item$name == proteinName) {
+      return(item$color)
+    }
+  }
+  
+  return(defaultColor)
+}
+
+# Apply the function to assign colors
+loadings_df$Color <- sapply(loadings_df$Protein, getColorForProtein, lookup=lookup)
+
+
+# Predefined colors vector in R
+# colors <- list(Inflammation = "tab:red", 
+#                Neurology = "tab:blue", 
+#                Cardiometabolic = "tab:orange", 
+#                Oncology = "tab:green")
+
+# Replace 'tab:blue' etc. with original panels
+loadings_df$Panel[loadings_df$Color == "tab:blue"] <- "neurology"
+loadings_df$Panel[loadings_df$Color == "tab:orange"] <- "cardiometabolic"
+loadings_df$Panel[loadings_df$Color == "tab:green"] <- "oncology"
+loadings_df$Panel[loadings_df$Color == "tab:red"] <-  "inflammatory"
+loadings_df$Panel[loadings_df$Color == "tab:grey"] <-  "misc"
+
+
+loadings_df$Panel <- as.factor(loadings_df$Panel)
+
+#n.b we have two instances where a protein is assigned "misc" so ensure to cross-check here
+
+loadings_df %<>% filter(Panel == "neurology" |
+                         Panel == "cardiometabolic" |
+                         Panel == "inflammatory" |
+                         Panel == "oncology")
+
+# Plotting loadings
+ggplot(loadings_df, aes(x = reorder(Protein, Loading), y = Loading, fill = Panel)) +
+  geom_bar(stat = "identity",
+           #fill =Panel, 
+           alpha = 0.4) +
+  coord_flip() +
+  theme_classic() +
+  facet_grid(~Panel) +
+  labs(title = "PLS2 Loadings for Predictor Variables - Component 1",
+       x = "Proteins", y = "Loading") +
+  theme(plot.title = element_text(size=11, face= "bold"),
+        axis.text.y = element_text(size = 1),
+        axis.text.x = element_text(size = 5),
+        axis.ticks.y = element_blank(),
+        axis.title.y = element_text(size = 10, face="bold"),
+        axis.title.x = element_text(size = 10,face="bold"),
+        legend.position="bottom",
+        legend.title = element_text(size=10, 
+                                  face="bold"))
+
+###### Plot smaller smample
+
+#library(dplyr)
+
+# Assuming loadings_df is your dataframe
+# Select a random 10% of the rows
+set.seed(42)  # For reproducibility
+random_subset_df <- loadings_df %>% sample_n(size = floor(0.1 * nrow(loadings_df)))
+
+# View the first few rows of the subset
+head(random_subset_df)
+
+# Plotting loadings
+ggplot(random_subset_df, aes(x = reorder(Protein, Loading), y = Loading, fill = Panel)) +
+  geom_bar(stat = "identity",
+           #fill =Panel, 
+           alpha = 0.4) +
+  coord_flip() +
+  theme_classic() +
+  facet_grid(~Panel) +
+  labs(title = "PLS2 Loadings for Predictor Variables - Component 1",
+       x = "Proteins", y = "Loading") +
+  theme(plot.title = element_text(size=11, face= "bold"),
+        axis.text.y = element_text(size = 4),
+                                   #color = Panel),
+        axis.text.x = element_text(size = 5),
+        axis.ticks.y = element_blank(),
+        axis.title.y = element_text(size = 10, face="bold"),
+        axis.title.x = element_text(size = 10,face="bold"),
+        legend.position="bottom",
+        legend.title = element_text(size=10, 
+                                    face="bold"))
+
+
+
+
+
+plot(PLS2_object[["x.scores"]]) # explanation
+plot(PLS2_object[["y.scores"]]) # explanation
+plot(PLS2_object[["x.loads"]]) # explanation
+
+# plot variables (circle of correlations)
+plot(PLS2_object, what="variables")
+
+# plot observations (as points)
+plot(PLS2_object, what="observations")
+
+# plot observations with labels
+plot(PLS2_object, what="observations", show.names=TRUE)
 
 
 ## -----------------------------
