@@ -6,11 +6,11 @@
 ##
 ## -----------------------------
 ##  This R script runs a PLS on the data as a benchmark test. It does the following:
-##.  1. 
-##.  2. 
-##.  3. 
-##.  4. 
-##.  5. 
+##.  1. Loads matrices of interet: predictors (proteins) and outcomes (neuroimaging); scales neuroimaging outcome variable (e.g. grey matter volume)
+##.  2. Runs simple pls model: plsr(Y ~ X, ncomp = 10, method = "kernelpls")
+##.  3. Runs a permutation test (Simplified Spin Test) to evaluate p-value (variance explained by PC1)
+##.  4. Performs cross-validation; MSEP plot to determine how many components to extract
+##.  5. Generates a loadings plot for PC1-PC5 
 ##
 ## This script assumes you have loaded your data into two data frames: protein_data and gm_volume
 ## X (protein_data): A matrix of dimensions 4644 (individuals) x 1463 (proteins)
@@ -34,7 +34,6 @@ library(pls)
 #library(plsdepot)  # For alternative PLS methods if needed
 
 
-
 ## -------LOAD DATASETS---------
 MASTER_DATA <- read.csv("MASTER_DATA.csv") #contains all main data
 # Set 'eid' column as row names for the 'wm' dataset
@@ -55,7 +54,6 @@ scaled_gm <- scale(gm_eid[c(2)])
 # Standardizing the data (Z-score normalization)
 X <- as.matrix(imputed_data[c(2:1464)])
 Y <- as.matrix(scaled_gm)
-
 
 # Step 2: Running PLS Analysis
 
@@ -105,14 +103,94 @@ p_value
 #"In assessing the significance of the explained variance by the first component of our PLSR model relating protein data to grey matter volume, a permutation test (n=20 permutations) was conducted. The p-value obtained from this test was 0.4, indicating that the explained variance observed could not be distinguished from chance (p > 0.05). Therefore, we find insufficient evidence to assert that the relationship captured by the first component is statistically significant, suggesting that further investigation is required to elucidate the nature of the association between protein profiles and grey matter volume.
 
 #Step 4: Cross-validation
-#Cross-validation can be performed using the validationplot function or by manually splitting the data.
+# Cross-validation can be performed using the validationplot function or by manually splitting the data.
 # Basic cross-validation visualization
 validationplot(pls_result, val.type = "MSEP")
+
+# MSEP plot indicates that 3 components should be selected (elbow)
 
 #Step 5: Visualizing Results
 #Visualization can vary depending on what aspect of the PLS results you are interested in. 
 #Here's how to visualize the loadings:
 
-# Visualizing loadings for the first component
-loadings <- coef(pls_result, ncomp = 1)
-barplot(loadings)
+# Visualizing loadings for the first 5 components
+loadings_x <- as.data.frame(coef(pls_result, ncomp = 1:5))
+# Rename the column using dplyr's rename function
+loadings_x <- loadings_x %>%
+  rename(PC1_loadings = `Y.1 comps`,
+         PC2_loadings = `Y.2 comps`,
+         PC3_loadings = `Y.3 comps`,
+         PC4_loadings = `Y.4 comps`,
+         PC5_loadings = `Y.5 comps`
+         )
+
+# Convert row names to a column called 'proteins'
+loadings_x <- loadings_x %>% 
+  rownames_to_column(var = "proteins")
+
+#Not sure why colour isn't changing?
+ggplot(loadings_x, 
+       aes(x = reorder(proteins, PC2_loadings), 
+           y = PC2_loadings,
+          # fill = "#55bcc2", 
+           fill = "#CF9FFF",
+           alpha = 0.6)
+       ) +
+  geom_bar(stat = "identity") +
+  labs(title = "PLS Loadings for Grey Matter", 
+       subtitle = "Dimension 2 (13.9%)",
+       x = "Protein", y = "Loadings for Second Component") +
+  theme_classic() +
+  theme(plot.title = element_text(size=11, face= "bold"),
+        plot.subtitle = element_text(size=10),
+        axis.text.y = element_text(size = 2),
+        axis.text.x = element_text(size = 2),
+        axis.ticks.y = element_blank(),
+        axis.title.y = element_text(size = 10, face="bold"),
+        axis.title.x = element_text(size = 10,face="bold"),
+        legend.position = "none") +
+  coord_flip()
+
+#########
+
+# Extracting loadings for the first component
+loadings <- as.data.frame(loadings(pls_result)[, 1])
+
+# Load the dplyr package
+library(dplyr)
+
+# Rename the column using dplyr's rename function
+loadings <- loadings %>%
+  rename(loadings = `loadings(pls_result)[, 1]`)
+
+# Convert row names to a column called 'proteins'
+loadings <- loadings %>% 
+  rownames_to_column(var = "proteins")
+
+ggplot(loadings, 
+       aes(x = reorder(proteins, loadings), 
+                       y = loadings,
+                       fill = "#D70040", 
+                       alpha = 0.6)
+       ) +
+  geom_bar(stat = "identity") +
+  labs(title = "PLS Loadings for Grey Matter", 
+       subtitle = "Dimension 1 (13.9%)",
+       x = "Protein", y = "Loadings for First Component") +
+  theme_classic() +
+  theme(plot.title = element_text(size=11, face= "bold"),
+        plot.subtitle = element_text(size=10),
+        axis.text.y = element_text(size = 2),
+        #color = Panel),
+        axis.text.x = element_text(size = 2),
+        axis.ticks.y = element_blank(),
+        axis.title.y = element_text(size = 10, face="bold"),
+        axis.title.x = element_text(size = 10,face="bold"),
+        legend.position = "none") +
+  coord_flip()
+
+# Since loadings are typically in a complex structure, ensure it's a numeric vector before plotting
+loadings_vector <- as.numeric(loadings)
+
+# Create a bar plot of the loadings for the first component
+barplot(loadings_vector)
