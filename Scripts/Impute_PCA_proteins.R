@@ -6,7 +6,7 @@
 ##  This R script runs a PCA on the data sa a benchmark test. It does the following:
 ##.  1. Checks for missing values in proteomic dataset
 ##.  2. Imputes missing data: knn imputation in proteomic dataset
-##.  3. Scales protein levels
+##.  3. Scales protein levels, write.csv(imputed_data, 'knn_imputed_olink_proteins_normalised_scaled.csv', row.names = F)
 ##.  4. Performs PCA
 ##.  5. Generates PDFs of screeplots for supplement
 ##
@@ -16,6 +16,16 @@
 ## -----------------------------
 
 setwd("/Users/eleanorc_worklaptop/desktop/UKB_Proteomics/UKB_PPP_Rscripts")
+
+## -------PACKAGES---------
+
+install.packages("tidyverse")
+install.packages("magrittr")
+install.packages("impute")
+install.packages("ggcorrplot")
+
+library(tidyverse)
+library(magrittr)
 
 ## -------LOAD DATASETS---------
 MASTER_DATA <- read.csv("MASTER_DATA.csv") #contains all main data
@@ -40,10 +50,9 @@ all_protein_data_non_imputed <- MASTER_DATA %>% select(eid, all_of(all_proteins_
 
 write.csv(all_protein_data_non_imputed, "all_protein_data_non_imputed.csv")
 
-
 # remove any missing values dim(all_protein_data) = [1] 4644   368; dim(cleaned_all_protein_data) = 3423  368
 # something is up here - reduces our dataset down to 173 ??
-#all_protein_data_no_NA <- na.omit(all_protein_data)
+# all_protein_data_no_NA <- na.omit(all_protein_data)
 
 # Calculate the number of missing values per column
 missing_values <- sapply(imputed_data, function(x) sum(is.na(x)))
@@ -264,5 +273,6 @@ ggcorrplot(corr, hc.order = TRUE, type = "lower",
            outline.col = "white") + theme(text = element_text(size = 0.2))
 dev.off()
 
+## -----------------------------
 
 devtools::session_info()
