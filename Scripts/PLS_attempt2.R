@@ -194,3 +194,130 @@ loadings_vector <- as.numeric(loadings)
 
 # Create a bar plot of the loadings for the first component
 barplot(loadings_vector)
+
+
+
+## -------PLS2 but for FA across 27 TRACTS---------
+
+########################## Run PLS2 but on tract FA data
+## ------- ASSIGNING ---------
+# Define white matter tracts columns
+wm_cols <- c("FMaj_FA", "FMin_FA", "lAR_FA", "lATR_FA", "lCingG_FA", "lCingPH_FA", 
+             "lCST_FA", "lIFOF_FA", "lILF_FA", "lML_FA", "lPTR_FA", "lSLF_FA", 
+             "lSTR_FA", "lUnc_FA", "MCP_FA", "rAR_FA", "rATR_FA", "rCingG_FA", 
+             "rCingPH_FA", "rCST_FA", "rIFOF_FA", "rILF_FA", "rML_FA", "rPTR_FA", 
+             "rSLF_FA", "rSTR_FA", "rUnc_FA")
+
+# Extract white matter tracts data
+wm <- MASTER_DATA[, c("eid", wm_cols)]
+
+# Extract proteins data by selecting columns not in wm_cols, also ignore the column eid
+#proteins <- df_neuroimaging[, !(names(df_neuroimaging) %in% wm_cols)]
+
+## ------- SCALE ---------
+
+scaled_FA <- scale(wm[c(2:27)])
+
+# Standardizing the data (Z-score normalization)
+X <- as.matrix(imputed_data[c(2:1464)])
+Y <- as.matrix(scaled_FA)
+
+# Step 2: Running PLS Analysis
+
+# Running PLS
+pls_result <- plsr(Y ~ X, ncomp = 10, method = "kernelpls")
+
+# View summary
+summary(pls_result)
+
+
+# some plots:
+
+# coefplot from the pls package creates plots
+
+if (FALSE) {
+  coefplot(pls_result, ncomp = 1:6)
+  plot(pls_result, plottype = "coefficients", ncomp = 1:4) # Equivalent to the previous
+  ## Plot with legend:
+  coefplot(pls_result, 
+           ncom = 1:4, 
+           legendpos = "bottomright") +
+}
+
+# If we are to recreate these using ggplot we need to extract coefs from the pls_result object
+# Creating a custom version of the coefplot from the pls package using ggplot2 in R:
+#  (1) need to extract the regression coefficients from our PLS model object,
+#   (2) then plot these coefficients using ggplot2
+#   (3) finally, apply my specified theme settings.
+
+# Step 1: Extract Regression Coefficients
+# First, I need to extract the regression coefficients from the PLS model object. 
+# I can do this using the coef() function from the pls package. 
+# Note that if I want to consider a specific number of components, 
+# I should specify this when extracting the coefficients.
+
+
+# Assuming pls_model is your PLS model object
+
+# Running PLS
+pls_model <- plsr(Y ~ X, ncomp = 4, method = "kernelpls")
+
+# Step 1 :Extract coefficients for the specified number of components (e.g., for all components)
+coefficients <- coef(pls_model, ncomp = pls_model$ncomp)
+
+# Convert to a dataframe for easier handling with ggplot
+coef_df <- as.data.frame(coefficients)
+
+# Keep information about proteins
+coef_df$Protein <- rownames(coef_df)
+
+# Step 2: Prepare Data for ggplot
+#The dataframe needs to be in a long format for ggplot, so you might need to reshape it.
+
+library(tidyr)
+
+coef_df_long <- pivot_longer(coef_df, 
+                             cols = -Protein, 
+                             names_to = "Component", 
+                             values_to = "Coefficient")
+
+coef_df_long <- separate(coef_df_long, 
+                         col = Component, 
+                         into = c("WM_tract", "Component"), 
+                         sep = "\\.", 
+                         remove = FALSE) 
+
+#### Nb. causes R to encounter a fatal error 
+
+ggplot(coef_df_long, aes(x = Protein, 
+                         y = Coefficient, 
+                         group = Component,
+                         color = Component)
+       ) +
+  geom_line() + # or geom_point(), depending on what you're trying to visualize
+  theme_classic() +
+  theme(plot.title = element_text(size=11, face= "bold"),
+        plot.subtitle = element_text(size=10),
+        axis.text.y = element_text(size = 2),
+        axis.text.x = element_text(size = 2, angle = 90, hjust = 1), # Rotate x labels for clarity
+        axis.ticks.y = element_blank(),
+        axis.title.y = element_text(size = 10, face="bold"),
+        axis.title.x = element_text(size = 10, face="bold")) +
+  facet_grid(~WM_tract) +
+  labs(x = "Protein", y = "Regression Coefficient", title = "PLS Model Coefficients")
+
+
+# Step 3: Use ggplot
+ggplot(coef_df_long, aes(x = Variable, y = Coefficient)) +
+  geom_line() + # or geom_point(), depending on your preference
+  theme_classic() +
+  theme(plot.title = element_text(size=11, face= "bold"),
+        plot.subtitle = element_text(size=10),
+        axis.text.y = element_text(size = 2),
+        axis.text.x = element_text(size = 2, angle = 90, hjust = 1), # Rotate x labels for clarity
+        axis.ticks.y = element_blank(),
+        axis.title.y = element_text(size = 10, face="bold"),
+        axis.title.x = element_text(size = 10, face="bold")) +
+  labs(x = "Variable", y = "Regression Coefficient", title = "PLS Model Coefficients")
+
+
